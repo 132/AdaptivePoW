@@ -90,7 +90,7 @@ def  sum_scaled_weights(scaled_weight_list):
     return avg_grad
 
 
-def client_main(folder_path='/home/nextg3/Documents/Thesis/Code/FL/local_models',img_path='/home/nextg3/Documents/Thesis/Code/FL/MNIST_training',client_name='client'):
+def client_main(folder_path='MNIST/Shared_memory',img_path='MNIST/client_0',client_name='client'):
     '''
     Main fuction called for a client for
     local model training and sharing models
@@ -136,7 +136,7 @@ def client_main(folder_path='/home/nextg3/Documents/Thesis/Code/FL/local_models'
     print('######################')
 
 
-def miner_main(folder_path='/home/nextg3/Documents/Thesis/Code/FL/local_models'):
+def miner_main(folder_path='MNIST/Shared_memory'):
     # Declare Model parameters
     print('######################')
     print('######################')
