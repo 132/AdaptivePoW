@@ -90,6 +90,16 @@ def  sum_scaled_weights(scaled_weight_list):
         avg_grad.append(layer_mean)
     return avg_grad
 
+def test_model_performance(X_test, Y_test, model):
+    cce = tf.keras.losses.CategoricalCrossentropy(from_logits=True)
+    # logits=model.predict(X_test, batch_size=100)
+    logits=model.predict(X_test)
+    loss = cce(Y_test, logits)
+    acc = accuracy_score(tf.argmax(logits, axis  = 1), tf.argmax(Y_test, axis = 1))
+    print('Performance - global_acc: {:.3%} | global_loss: {}'.format(acc, loss))
+    return acc, loss
+
+
 
 def client_main(folder_path='MNIST/Shared_memory',img_path='MNIST/client_0',client_name='client',model_format='pkl'):
     '''
@@ -212,6 +222,28 @@ def miner_main(folder_path='MNIST/Shared_memory',model_format='pkl'):
     global_model.set_weights(average_weights)
     print('######################')
     print('######################')
+
+
+    image_paths = list(paths.list_images(os.path.join(folder_path,'MNIST_testing')))
+    print('Reading image folders at the location {}'.format(os.path.join(folder_path,'MNIST_testing')))
+    print('######################')
+    print('######################')
+    #  apply function
+    X_test,y_test = load(image_paths, verbose = 10000)
+    #  Binarize the labels
+    lb = LabelBinarizer()
+    y_test = lb.fit_transform(y_test)
+
+    # X_test,y_test = load(os.path.join(folder_path,'MNIST_testing'), verbose = 10000)
+    test_batched=tf.data.Dataset.from_tensor_slices((X_test,y_test)).batch(len(y_test))
+    # test_batched = tf.data.Dataset.from_tensor_slices((X_test,y_test)).batch(len(y_test))
+    for(X_test, Y_test) in test_batched:
+        global_acc, global_loss = test_model_performance(X_test, Y_test, global_model)
+
+
+
+
+
     if model_format =='pkl':
         print('Saving global weights at {}'.format(os.path.join(folder_path,'global_model.pkl')))
         with open(os.path.join(folder_path,'global_model.pkl'), 'wb') as f:
