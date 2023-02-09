@@ -23,6 +23,7 @@ from tensorflow.keras.layers import Dense
 from tensorflow.keras.optimizers.legacy import SGD
 from tensorflow.keras import backend as k
 import os
+import pickle
 
 
 
@@ -90,7 +91,7 @@ def  sum_scaled_weights(scaled_weight_list):
     return avg_grad
 
 
-def client_main(folder_path='MNIST/Shared_memory',img_path='MNIST/client_0',client_name='client'):
+def client_main(folder_path='MNIST/Shared_memory',img_path='MNIST/client_0',client_name='client',model_format='pkl'):
     '''
     Main fuction called for a client for
     local model training and sharing models
@@ -104,10 +105,12 @@ def client_main(folder_path='MNIST/Shared_memory',img_path='MNIST/client_0',clie
     image_paths = list(paths.list_images(img_path))
     print('Reading image folders at the location {}'.format(img_path))
     print('######################')
+    print('######################')
     #  apply function
     image_list, label_list = load(image_paths, verbose = 10000)
     #  Binarize the labels
     lb = LabelBinarizer()
+    print('Fitting model on local data')
     label_list = lb.fit_transform(label_list)
     X_train, y_train =  image_list, label_list
     batched_data = tf.data.Dataset.from_tensor_slices((X_train, y_train)).batch(len(y_train))
@@ -124,19 +127,44 @@ def client_main(folder_path='MNIST/Shared_memory',img_path='MNIST/client_0',clie
     local_model.compile(loss=loss,
                         optimizer=optimizer,
                         metrics=metrics)
-    # Load weights from h5 file
-    print('loading global weight at: {}'.format(os.path.join(folder_path,'global_model.h5')))
-    local_model.load_weights(os.path.join(folder_path,'global_model.h5'))
+    
+
+    if model_format == 'pkl':
+        # Load weights from pkl file
+        print('loading global weight at: {}'.format(os.path.join(folder_path,'global_model.pkl')))
+        w = pickle.load(open(os.path.join(folder_path,'global_model.pkl'),'rb'))
+        local_model.set_weights(w)
+    elif model_format == 'h5':
+        # Load weights from h5 file
+        print('loading global weight at: {}'.format(os.path.join(folder_path,'global_model.h5')))
+        local_model.load_weights(os.path.join(folder_path,'global_model.h5'))
+
+
+    # local_model.load_weights(os.path.join(folder_path,'global_model.h5'))
     # Fit local model with client data
+    print('######################')
+    print('######################')
+    print('Fiting model on local data')
     local_model.fit(batched_data, epochs=1, verbose=0)
-    client_name = client_name+'_weights.h5'
-    print('Saving trained model weights as: {}'.format(os.path.join(folder_path,client_name)))
-    local_model.save_weights(os.path.join(folder_path,client_name))
+    print('######################')
+    print('######################')
+    print('saving local model weights')
+
+    if model_format == 'pkl':
+            client_name = client_name+'_weights.pkl'
+            print('saving local model weights {}'.format(os.path.join(folder_path,client_name)))
+            with open(os.path.join(folder_path,client_name), 'wb') as f:
+                pickle.dump(local_model.get_weights(), f)
+            
+    elif model_format=='h5':
+        client_name = client_name+'_weights.h5'
+        print('Saving trained model weights as: {}'.format(os.path.join(folder_path,client_name)))
+        local_model.save_weights(os.path.join(folder_path,client_name))
     print('######################')
     print('######################')
 
 
-def miner_main(folder_path='MNIST/Shared_memory'):
+def miner_main(folder_path='MNIST/Shared_memory',model_format='pkl'):
     # Declare Model parameters
     print('######################')
     print('######################')
@@ -153,6 +181,8 @@ def miner_main(folder_path='MNIST/Shared_memory'):
     weight_path = folder_path
     # Get path list
     weight_paths = list(paths.list_files(weight_path))
+    weight_paths = [f for f in weight_paths if ('.pkl' in f) or ('.h5' in f)]
+    # print(weight_paths)
     local_models  = []
 
     # get all models
@@ -165,8 +195,12 @@ def miner_main(folder_path='MNIST/Shared_memory'):
                             optimizer=optimizer,
                             metrics=metrics)
         # set weights of the global model as weights of the local modelk
+        if model_format == 'pkl':
+            w = pickle.load(open(p,'rb'))
+            local_model.set_weights(w)
+        elif model_format == 'h5':
+            local_model.load_weights(p)
 
-        local_model.load_weights(p)
         scaled_model_weights = scale_model_weights(local_model.get_weights(),len(weight_paths))
         local_models.append(scaled_model_weights)
         k.clear_session()
@@ -178,8 +212,14 @@ def miner_main(folder_path='MNIST/Shared_memory'):
     global_model.set_weights(average_weights)
     print('######################')
     print('######################')
-    print('Saving global weights at {}'.format(os.path.join(folder_path,'global_model.h5')))
-    global_model.save_weights(os.path.join(folder_path,'global_model.h5'))
+    if model_format =='pkl':
+        print('Saving global weights at {}'.format(os.path.join(folder_path,'global_model.pkl')))
+        with open(os.path.join(folder_path,'global_model.pkl'), 'wb') as f:
+            pickle.dump(average_weights, f)
+
+    elif model_format=='h5':
+        print('Saving global weights at {}'.format(os.path.join(folder_path,'global_model.h5')))
+        global_model.save_weights(os.path.join(folder_path,'global_model.h5'))
     print('######################')
     print('######################')
 
@@ -187,7 +227,7 @@ def miner_main(folder_path='MNIST/Shared_memory'):
 
 if __name__=='__main__':
     try:
-      opts, args = getopt.getopt(sys.argv[1:],"he:p:i:",["entity=","path=","image_path="])
+      opts, args = getopt.getopt(sys.argv[1:],"he:p:i:n:",["entity=","path=","image_path=,client_name="])
     except getopt.GetoptError:
         print ('script.py -e <miner/client> -p <path for shared storage> -ip <path to folder with local images>')
         sys.exit(2)
@@ -203,11 +243,16 @@ if __name__=='__main__':
          folder_path = arg
       elif opt in ("-i", "--image_path"):
          imag_path = arg
+      elif opt in ("-n", "--client_name"):
+         client_name = arg
+
+
+    model_format = 'pkl' # pkl or h5
     
     if miner:
-        miner_main(folder_path)
+        miner_main(folder_path,model_format=model_format)
     else:
-        client_main(folder_path=folder_path,img_path=imag_path,client_name='bob')
+        client_main(folder_path=folder_path,img_path=imag_path,client_name=client_name,model_format=model_format)
 
 
 
